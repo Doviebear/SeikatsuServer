@@ -1,7 +1,6 @@
 
 
 const morgan = require('morgan')
-const mysql = require('mysql')
 const express = require('express')
 var app = express()
 var socket = require('socket.io')
@@ -14,16 +13,7 @@ const bodyParser = require('body-parser')
 
 app.use(bodyParser.urlencoded({extended: false}))
 
-const pool = mysql.createPool({
-    connectionLimit: 10,
-    host: 'localhost',
-    user: 'root',
-    password: 'softdrink9',
-    database: 'testDatabase'
-})
-function getConnection() {
-    return pool
-}
+
 
 
 
@@ -39,7 +29,10 @@ app.get("/", (req, res) => {
     res.send("Hello World")
 })
 
-
+app.get("/boo", (req, res) => {
+    console.log("responding to Boo")
+    res.send("Got the BOO")
+})
 
 const router = require('./routes/user.js')
 app.use(router)
@@ -55,26 +48,12 @@ var io = socket(server);
 
 io.on('connection', function(socket){
     console.log("made socket connection", socket.id)
-    const queryString = "INSERT INTO Sockets (socketId) VALUES (?)"
-    getConnection().query(queryString, socket.id, (err, results, fields) => {
-        if (err) {
-            console.log("Failed to insert with error: " + err)
-            return
-        }
-        console.log("Inserted Socket with ID: " + socket.id)
-        
-    })
+    
 
     socket.on('disconnect', function(){
         console.log("Socket connection " + socket.id + " disconnected")
-        const queryString2 = "DELETE FROM Sockets WHERE socketId = ?"
-        getConnection().query(queryString2, [socket.id], (err, results, fields) => {
-            if (err) {
-                console.log("Failed to delete with error: " + err)
-                return
-            }
-            console.log("Deleted Socket with ID: " + socket.id)
-        })
+        
+        
         
     })
     socket.on('chat', function(data){
