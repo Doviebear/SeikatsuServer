@@ -7,7 +7,7 @@ module.exports = {
   deploy : {
     production : {
       user : 'ubuntu',
-      host : 'ec2-54-80-227-172.compute-1.amazonaws.com',
+      host : '3.218.33.203',
       key  : '~/.ssh/SeikatsuServer.pem',
       ref  : 'origin/master',
       repo : 'git@github.com:Doviebear/SeikatsuServer.git',
