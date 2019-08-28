@@ -59,18 +59,20 @@ io.on('connection', function(socket){
     socket.on('chat', function(data){
         console.log("recieved chat messages with message: " + data)
     })
-    socket.on('joinQueue', function(){
+    socket.on('joinQueue', function(callback){
         var inQueue = false
         waitingQueue.forEach(socketInArray => {
             if (socket.id == socketInArray.id) {
                 console.log("socket already in queue")
                 inQueue = true
+                callback(3)
             }
         })
         if (!inQueue) {
             console.log("User joined queue")
             waitingQueue.push(socket)
             console.log("current Queue Length: " + waitingQueue.length)
+            callback(0)
         
             checkQueueForGame()
             //testStartGameEmit(socket)
