@@ -5,7 +5,6 @@ const express = require('express')
 var app = express()
 var socket = require('socket.io')
 var randomstring = require('randomstring')
-var fs = require('fs')
 
 
 
@@ -21,7 +20,10 @@ app.use(morgan('short'))
 app.use(express.static('./public'))
 
 var waitingQueue = []
-var gamesDict = {}
+//Array of all active rooms with games in them
+var gamesArray = []
+var friendGamesDict = {}
+var uniqueIdDict ={}
 
 
 app.get("/", (req, res) => {
@@ -48,21 +50,44 @@ var io = socket(server);
 
 io.on('connection', function(socket){
     console.log("made socket connection", socket.id)
-    
+    var uniqueId = randomstring.generate()
+    socket.emit('hereIsUniqueId', uniqueId)
+    uniqueIdDict[uniqueId] = [socket.id]
 
+    socket.on('reconnectionPing', function(data){
+        //Change Socket To be the correct Unique ID
+        if (typeof data == "string") {
+            //This is the get rid of any data created on the old unique ID
+            delete uniqueIdDict[uniqueId] 
+
+            uniqueId = data
+        
+             //changes first room to be the socket id of the new socket
+            let roomsOfId = uniqueIdDict[uniqueId]
+            roomsOfId[0] = socket.id
+            uniqueIdDict[uniqueId] = roomsOfId
+
+            //change the new sokcets rooms to match the Unique Id dict.
+            for(var i = 1; i < roomsOfId.length; i++ ){
+                var roomOfId = roomsOfId[i]
+                socket.join(roomOfId, () => {
+                    console.log("joined new room")
+                })
+            
+            }
+        }
+    })
     socket.on('disconnect', function(){
         console.log("Socket connection " + socket.id + " disconnected")
-        
-        
-        
     })
+    
     socket.on('chat', function(data){
         console.log("recieved chat messages with message: " + data)
     })
     socket.on('joinQueue', function(callback){
         var inQueue = false
         waitingQueue.forEach(socketInArray => {
-            if (socket.id == socketInArray.id) {
+            if (uniqueId == socketInArray[0]) {
                 console.log("socket already in queue")
                 inQueue = true
                 callback(3)
@@ -70,7 +95,7 @@ io.on('connection', function(socket){
         })
         if (!inQueue) {
             console.log("User joined queue")
-            waitingQueue.push(socket)
+            waitingQueue.push([uniqueId,socket])
             console.log("current Queue Length: " + waitingQueue.length)
             callback(0)
         
@@ -91,6 +116,51 @@ io.on('connection', function(socket){
         console.log("emitted round end")
 
     })
+    socket.on('createGame', function(nameOfGame,callback){
+        console.log("start Create Game func")
+        var exists = false
+        if (nameOfGame in friendGamesDict) {
+            console.log("Game Name already exists, cant add")
+                callback(3)
+                exists = true
+        }
+
+        if (!exists) {
+            const gameID = randomstring.generate()
+            const gameString = "game" + gameID
+            friendGamesDict.push = {
+                key: nameOfGame,
+                value: gameString
+            }
+            socket.join(gameString, () => {
+                console.log("Created friend room " + gameString)
+                addToUniqueIdDict(uniqueId,gameString)
+                callback(0)
+            })
+        }
+    })
+    socket.on('joinRoom', function(nameOfGame, callback){
+        if (nameOfGame in friendGamesDict) {
+            var gameString = friendGamesDict[nameOfGame]
+            socket.join(gameString, () => {
+                addToUniqueIdDict(uniqueId,gameString)
+                callback(0)
+            })
+        } else {
+            callback(10)
+        }
+        
+    })
+    socket.on('startFriendGame', function(){
+        //console.log("StartedFriendGame")
+        const roomToSend = getRoom(socket)
+        socket.emit('getModel', (data) => {
+            startGameFromRoom(roomToSend, data)
+        })
+       
+    })
+    
+    
     
 })
 
@@ -121,36 +191,65 @@ function checkQueueForGame() {
         // Add gameID to Dict
         const gameID = randomstring.generate()
         const gameString = "game" + gameID
-        gamesDict.push = {
-            key: socketsArray,
-            value: gameString
-        }
+        gamesArray.push = gameString
+           
         //Add Sockets to Room
         
 
         //Emit message to start game
-        socketsArray[0].emit('getModel', (data) => {
-            var playerNum = 1
-            socketsArray.forEach(addedSocket => {
-                addedSocket.join(gameString, () => {
-                    console.log("Added " + addedSocket.id + "to room: " + gameString)
-                })
-                addedSocket.emit('startGame', data, playerNum)
-                console.log("sent json packet to player " + playerNum)
-                playerNum += 1
-            });
-       })
-        
+        startGameFromSocketArray(socketsArray, gameString)    
             
-            
-        
-        
-
     } else {
        //Didnt find enough players for a game 
     }
 }
 
+
+function startGameFromSocketArray(socketsArray, gameString){
+    var socketPairOne = socketsArray[0]
+    socketPairOne[1].emit('getModel', (data) => {
+        var playerNum = 1
+        socketsArray.forEach(socketPair => {
+            let addedSocket = socketPair[1]
+            addedSocket.join(gameString, () => {
+                addToUniqueIdDict(socketPair[0],gameString)
+                console.log("Added " + addedSocket.id + "to room: " + gameString)
+            })
+            addedSocket.emit('startGame', data, playerNum)
+            console.log("sent json packet to player " + playerNum)
+            playerNum += 1
+        });
+   })
+}
+
+function startGameFromRoom(roomID, data){
+    //console.log("started StartGame Func")
+    var playerNum = 1
+    io.sockets.in(roomID).clients(function(err, clients) {
+        clients.forEach(client => {
+            let user = io.sockets.connected[client];
+            //user is a socket connected to the room
+
+            user.emit('startGame', data, playerNum)
+            console.log("sent json packet to player " + playerNum)
+            
+            playerNum += 1
+        });
+
+    });
+    
+       
+        
+   
+}
+
+function addToUniqueIdDict(uniqueId, thingToAdd){
+    let arrayToChange = uniqueIdDict[uniqueId]
+    arrayToChange.push(thingToAdd)
+    uniqueIdDict[uniqueId] = arrayToChange
+}
+
+/*
 function testStartGameEmit(selectedSocket) {
     fs.readFile('./private/SeikatsuJSON.json' ,  (err, data) => {
         if (err) {
@@ -162,6 +261,6 @@ function testStartGameEmit(selectedSocket) {
     })
     //console.log("json packet sent is :" + require('./private/SeikatsuJSON.json'))
 }
-
+*/
 
 
