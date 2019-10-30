@@ -12,9 +12,15 @@ const bodyParser = require('body-parser')
 
 app.use(bodyParser.urlencoded({extended: false}))
 
+/*
+var testDict = {}
+testDict["a"] = 1
+testDict["b"] = 2
 
 
-
+var testValue = "a"
+console.log(testValue in testDict)
+*/
 
 app.use(morgan('short'))
 app.use(express.static('./public'))
@@ -23,7 +29,7 @@ var waitingQueue = []
 //Array of all active rooms with games in them
 var gamesArray = []
 var friendGamesDict = {}
-var uniqueIdDict ={}
+var uniqueIdDict = {}
 
 
 app.get("/", (req, res) => {
@@ -114,7 +120,11 @@ io.on('connection', function(socket){
         const roomToSend = getRoom(socket)
         io.in(roomToSend).emit('endRound', data)
         console.log("emitted round end")
-
+        for (var i = 0; i < gamesArray.length; i++ ){
+            if (gamesArray[i] == roomToSend){
+                gamesArray.splice(i,1)
+            }
+        }
     })
     socket.on('createGame', function(nameOfGame,callback){
         console.log("start Create Game func")
@@ -128,10 +138,8 @@ io.on('connection', function(socket){
         if (!exists) {
             const gameID = randomstring.generate()
             const gameString = "game" + gameID
-            friendGamesDict.push = {
-                key: nameOfGame,
-                value: gameString
-            }
+            friendGamesDict[nameOfGame] = gameString
+               
             socket.join(gameString, () => {
                 console.log("Created friend room " + gameString)
                 addToUniqueIdDict(uniqueId,gameString)
@@ -140,24 +148,33 @@ io.on('connection', function(socket){
         }
     })
     socket.on('joinRoom', function(nameOfGame, callback){
+        console.log("starting joinRoom")
         if (nameOfGame in friendGamesDict) {
             var gameString = friendGamesDict[nameOfGame]
             socket.join(gameString, () => {
                 addToUniqueIdDict(uniqueId,gameString)
                 callback(0)
+                var room = io.sockets.adapter.rooms[gameString]
+                io.to(gameString).emit('updateFriendRoom',room.length)
+                console.log("Joined Friend Room")
             })
         } else {
             callback(10)
         }
         
     })
-    socket.on('startFriendGame', function(){
+    socket.on('startFriendGame', function(nameOfGame){
         //console.log("StartedFriendGame")
         const roomToSend = getRoom(socket)
         socket.emit('getModel', (data) => {
             startGameFromRoom(roomToSend, data)
         })
+        delete friendGamesDict[nameOfGame]
        
+    })
+    socket.on('getNumInRoom', function(callback){
+        const roomToGet = getRoom(socket)
+        callback(roomToGet.length)
     })
     
     
@@ -237,7 +254,7 @@ function startGameFromRoom(roomID, data){
         });
 
     });
-    
+    gamesArray.push(roomID)
        
         
    
