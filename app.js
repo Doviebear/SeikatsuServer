@@ -158,8 +158,13 @@ io.on('connection', function(socket){
     })
     socket.on('joinRoom', function(nameOfGame, callback){
         console.log("starting joinRoom")
+
         if (nameOfGame in friendGamesDict) {
             var gameString = friendGamesDict[nameOfGame]
+            let room = room(gameString)
+            if (room.length >= 3) {
+                callback(11)
+            }
             socket.join(gameString, () => {
                 addToUniqueIdDict(uniqueId,gameString)
                 callback(0)
@@ -171,6 +176,18 @@ io.on('connection', function(socket){
             callback(10)
         }
         
+    })
+    socket.on('removeFromQueue', function(callback) {
+        
+        for (var i = 0; i < waitingQueue.length; i++ ){
+            let socketInArray = waitingQueue[i]
+            if (uniqueId == socketInArray[0]){
+                waitingQueue.splice(i,1)
+                callback(0)
+                return
+            }
+        }
+        callback(11)
     })
     socket.on('startFriendGame', function(nameOfGame){
         //console.log("StartedFriendGame")
