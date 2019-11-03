@@ -73,7 +73,7 @@ io.on('connection', function(socket){
             roomsOfId[0] = socket.id
             uniqueIdDict[uniqueId] = roomsOfId
 
-            //change the new sokcets rooms to match the Unique Id dict.
+            //change the new sockets rooms to match the Unique Id dict.
             for(var i = 1; i < roomsOfId.length; i++ ){
                 var roomOfId = roomsOfId[i]
                 socket.join(roomOfId, () => {
@@ -85,6 +85,15 @@ io.on('connection', function(socket){
     })
     socket.on('disconnect', function(){
         console.log("Socket connection " + socket.id + " disconnected")
+    })
+    socket.on('disconnecting', function(){
+        let roomToSend = getRoom(socket)
+        socket.to(roomToSend).emit('playerDisconnected')
+        for (var i = 0; i < gamesArray.length; i++ ){
+            if (gamesArray[i] == roomToSend){
+                gamesArray.splice(i,1)
+            }
+        }
     })
     
     socket.on('chat', function(data){
