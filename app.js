@@ -2,6 +2,7 @@
 
 const morgan = require('morgan')
 const express = require('express')
+const redis = require('redis')
 var app = express()
 var socket = require('socket.io')
 var randomstring = require('randomstring')
@@ -11,6 +12,14 @@ var randomstring = require('randomstring')
 const bodyParser = require('body-parser')
 
 app.use(bodyParser.urlencoded({extended: false}))
+
+let client = redis.createClient(6379, 'seikatsubackendcache.eeptcw.ng.0001.use1.cache.amazonaws.com')
+
+client.on('connect', function(){
+    console.log("connected to Redis")
+})
+
+
 
 /*
 var testDict = {}
@@ -28,8 +37,8 @@ app.use(express.static('./public'))
 var waitingQueue = []
 //Array of all active rooms with games in them
 var gamesArray = []
-var friendGamesDict = {}
-var uniqueIdDict = {}
+//var friendGamesDict = {}
+//var uniqueIdDict = {}
 
 
 app.get("/", (req, res) => {
@@ -58,29 +67,43 @@ io.on('connection', function(socket){
     console.log("made socket connection", socket.id)
     var uniqueId = randomstring.generate()
     socket.emit('hereIsUniqueId', uniqueId)
-    uniqueIdDict[uniqueId] = [socket.id]
+    //client.set(uniqueId, "socketId", socket.id)
+    
 
     socket.on('reconnectionPing', function(data){
         //Change Socket To be the correct Unique ID
         if (typeof data == "string") {
             //This is the get rid of any data created on the old unique ID
-            delete uniqueIdDict[uniqueId] 
+            //delete uniqueIdDict[uniqueId] 
+
 
             uniqueId = data
+
+            //client.hset(uniqueId, "socketId", socket.id)
         
              //changes first room to be the socket id of the new socket
-            let roomsOfId = uniqueIdDict[uniqueId]
-            roomsOfId[0] = socket.id
-            uniqueIdDict[uniqueId] = roomsOfId
+            //let roomsOfId = uniqueIdDict[uniqueId]
+            //roomsOfId[0] = socket.id
+            //uniqueIdDict[uniqueId] = roomsOfId
 
             //change the new sockets rooms to match the Unique Id dict.
-            for(var i = 1; i < roomsOfId.length; i++ ){
-                var roomOfId = roomsOfId[i]
-                socket.join(roomOfId, () => {
-                    console.log("joined new room")
-                })
+            client.get(uniqueId, function(err, reply){
+                //Format of reply : "room1,room2,room3"
+                let stringOfRooms = reply
+                let arrayOfStrings = stringOfRooms.split(",")
+                
+                for(var i = 0; i < arrayOfStrings.length; i++){
+                    let gameRoom = arrayOfStrings[i]
+                    socket.join(gameRoom, () => {
+                        console.log("joined new room called: " + gameRoom)
+                    })
+                }
+                
+            } )
             
-            }
+            
+            
+            
         }
     })
     socket.on('disconnect', function(){
@@ -137,44 +160,53 @@ io.on('connection', function(socket){
     })
     socket.on('createGame', function(nameOfGame,callback){
         console.log("start Create Game func")
-        var exists = false
-        if (nameOfGame in friendGamesDict) {
-            console.log("Game Name already exists, cant add")
-                callback(3)
-                exists = true
-        }
+        client.get(nameOfGame, function(err, reply){
+            console.log("createGame client.get return: " + reply)
+            if (reply !== null) {
+                console.log("Game Name already exists, cant add")
+                    callback(3)
+            } else {
+                const gameID = randomstring.generate()
+                const gameString = "game" + gameID
+                client.set(nameOfGame, gameString, 'EX', 900)
+                
+                   
+                socket.join(gameString, () => {
+                    console.log("Created friend room " + gameString)
+                    addToUniqueIdDict(uniqueId,gameString)
+                    callback(0)
+                })
 
-        if (!exists) {
-            const gameID = randomstring.generate()
-            const gameString = "game" + gameID
-            friendGamesDict[nameOfGame] = gameString
-               
-            socket.join(gameString, () => {
-                console.log("Created friend room " + gameString)
-                addToUniqueIdDict(uniqueId,gameString)
-                callback(0)
-            })
-        }
+            }
+
+        })
+
     })
     socket.on('joinRoom', function(nameOfGame, callback){
         console.log("starting joinRoom")
-
-        if (nameOfGame in friendGamesDict) {
-            var gameString = friendGamesDict[nameOfGame]
-            let room = room(gameString)
-            if (room.length >= 3) {
-                callback(11)
-            }
-            socket.join(gameString, () => {
-                addToUniqueIdDict(uniqueId,gameString)
-                callback(0)
+        
+        client.get(nameOfGame, function(err, reply){
+            if ( reply !== null ) {
+                console.log("joinRoom reply is: " + reply)
+                var gameString = reply
                 var room = io.sockets.adapter.rooms[gameString]
-                io.to(gameString).emit('updateFriendRoom',room.length)
-                console.log("Joined Friend Room")
-            })
-        } else {
-            callback(10)
-        }
+                
+                if (room.length >= 3) {
+                    callback(11)
+                }
+                socket.join(gameString, () => {
+                    addToUniqueIdDict(uniqueId,gameString)
+                    callback(0)
+                    var room = io.sockets.adapter.rooms[gameString]
+                    io.to(gameString).emit('updateFriendRoom',room.length)
+                    console.log("Joined Friend Room")
+                })
+            } else {
+                callback(10)
+            }
+
+        })
+       
         
     })
     socket.on('removeFromQueue', function(callback) {
@@ -195,12 +227,14 @@ io.on('connection', function(socket){
         socket.emit('getModel', (data) => {
             startGameFromRoom(roomToSend, data)
         })
-        delete friendGamesDict[nameOfGame]
+        client.del(nameOfGame)
        
     })
     socket.on('getNumInRoom', function(callback){
-        const roomToGet = getRoom(socket)
-        callback(roomToGet.length)
+        const roomString = getRoom(socket)
+        var room = io.sockets.adapter.rooms[roomString]
+        console.log("room length is " + room.length)
+        callback(room.length)
     })
     
     
@@ -280,16 +314,22 @@ function startGameFromRoom(roomID, data){
         });
 
     });
-    gamesArray.push(roomID)
+    gamesArray.push = roomID
        
         
    
 }
 
-function addToUniqueIdDict(uniqueId, thingToAdd){
-    let arrayToChange = uniqueIdDict[uniqueId]
-    arrayToChange.push(thingToAdd)
-    uniqueIdDict[uniqueId] = arrayToChange
+function addToUniqueIdDict(uniqueId, gameStringToAdd){
+
+    //let arrayToChange = uniqueIdDict[uniqueId]
+    //arrayToChange.push(thingToAdd)
+    //uniqueIdDict[uniqueId] = arrayToChange
+    client.get(uniqueId, function(err, reply){
+        client.set(uniqueId, reply + "," + gameStringToAdd,'EX', 900)
+    })
+
+
 }
 
 /*
