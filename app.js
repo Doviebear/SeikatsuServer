@@ -6,6 +6,9 @@ const redis = require('redis')
 var app = express()
 var socket = require('socket.io')
 var randomstring = require('randomstring')
+const Sentry = require('@sentry/node');
+
+Sentry.init({ dsn: 'https://694155c86bd84ae8810fecd40820e1cd@sentry.io/1819274' });
 
 
 
@@ -90,14 +93,17 @@ io.on('connection', function(socket){
             client.get(uniqueId, function(err, reply){
                 //Format of reply : "room1,room2,room3"
                 let stringOfRooms = reply
-                let arrayOfStrings = stringOfRooms.split(",")
+                if (stringOfRooms != null) {
+                    let arrayOfStrings = stringOfRooms.split(",")
                 
-                for(var i = 0; i < arrayOfStrings.length; i++){
-                    let gameRoom = arrayOfStrings[i]
-                    socket.join(gameRoom, () => {
-                        console.log("joined new room called: " + gameRoom)
-                    })
+                    for(var i = 0; i < arrayOfStrings.length; i++){
+                        let gameRoom = arrayOfStrings[i]
+                        socket.join(gameRoom, () => {
+                            console.log("joined new room called: " + gameRoom)
+                        })
+                    }
                 }
+                
                 
             } )
             
