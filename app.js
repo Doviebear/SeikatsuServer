@@ -71,7 +71,6 @@ io.on('connection', function(socket){
     var uniqueId = randomstring.generate()
     socket.emit('hereIsUniqueId', uniqueId)
     //client.set(uniqueId, "socketId", socket.id)
-    myUndefinedFunction();
     
 
     socket.on('reconnectionPing', function(data){
