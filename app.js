@@ -116,6 +116,13 @@ io.on('connection', function(socket){
         console.log("Socket connection " + socket.id + " disconnected")
     })
     socket.on('disconnecting', function(){
+        for(i = 0; i < waitingQueue.length ; i++) {
+            if (waitingQueue[i].id == socket.id) {
+                waitingQueue.splice(i, 1)
+                continue
+            }
+        }
+        
         let roomToSend = getRoom(socket)
         socket.to(roomToSend).emit('playerDisconnected')
         for (var i = 0; i < gamesArray.length; i++ ){
